@@ -42,13 +42,18 @@ export async function sendEmail({ to, subject, text, html }: MailOptions) {
       },
     });
 
-    const info = await transporter.sendMail({
+    const mailPayload: nodemailer.SendMailOptions = {
       from: smtpFrom,
       to,
       subject,
       text,
-      html: html || text.replace(/\n/g, "<br>"),
-    });
+    };
+
+    if (html) {
+      mailPayload.html = html;
+    }
+
+    const info = await transporter.sendMail(mailPayload);
 
     console.log(`[EMAIL SERVICE] Email sent successfully: ${info.messageId}`);
     return { success: true, messageId: info.messageId };
