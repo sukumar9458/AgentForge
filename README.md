@@ -1,6 +1,6 @@
 # 🛠️ AgentForge
 
-AgentForge is an advanced multi-agent orchestrator built on **Next.js 15 (App Router)**, **LangGraph**, **MongoDB**, and **Google Generative AI (Gemini)**. It features a collaborative agent graph, semantic Retrieval-Augmented Generation (RAG), secure code sandbox execution, and a background AI Cron scheduler with automatic GitHub auditing and email notifications.
+AgentForge is an advanced multi-agent orchestrator built on **Next.js 15 (App Router)**, **LangGraph**, **MongoDB**, **Upstash Redis**, and **Google Generative AI (Gemini)**. It features a collaborative agent graph, semantic Retrieval-Augmented Generation (RAG), secure code sandbox execution, and a background AI Cron scheduler with automatic GitHub auditing and email notifications.
 
 ---
 
@@ -12,11 +12,17 @@ AgentForge is an advanced multi-agent orchestrator built on **Next.js 15 (App Ro
   - **Coder**: Implements precise code blocks and technical solutions.
   - **Critic**: Performs safety/security checks, executes generated code in a secure sandbox, and feeds stdout/stderr logs back. Auto-routes back to the Coder on failure.
   - **Writer**: Formats, compiles, and structures the final response into premium Markdown.
-- **⚡ Secure Code Sandbox**: Evaluates python/typescript/javascript code blocks in real-time to guarantee functionality before the user sees the output.
+- **⚡ Isolated Cloud Sandboxing & Code Execution**: Dual-engine sandbox runner supporting:
+  - **E2B Cloud MicroVMs**: Executes Python, JavaScript, TypeScript, and Bash in isolated cloud sandboxes with full package support and image/chart artifact capture.
+  - **Hardened Local Fallback**: Fast, local process runner with safety timeouts when running offline.
+- **🎨 Live Interactive Previews (Claude Artifacts & v0 Style)**: Renders HTML, React/TSX components (via Babel Standalone & React 18 CDN), and SVG graphics in real-time. Features:
+  - In-card **Code** vs **Preview** tabs.
+  - Side-by-side **Artifact Canvas Drawer** with Desktop (100%), Tablet (768px), and Mobile (375px) responsive viewports.
+  - One-click file export, pop-out to new window, and interactive sandbox terminal execution.
 - **⏰ Background AI Cron Engine**: Runs background schedules directly inside the Next.js runtime.
   - **GitHub Auditing**: Clones repository, ingests code files for dynamic RAG context, runs audit prompts, cleans up clones/vector db entries, and logs sessions.
   - **Email Alerts**: Integrates SMTP mail alerts to report success/failure with full logs and session links.
-- **🔒 MongoDB-Backed Rate Limiting**: Built-in sliding-window rate limiter ensuring users respect request-per-minute (RPM) and request-per-day (RPD) limits.
+- **🔒 In-Memory Redis Rate Limiting**: High-performance sliding-window rate limiter built on Upstash Redis (using ZSET transaction logs) ensuring users respect request-per-minute (RPM) and request-per-day (RPD) limits.
 - **📂 RAG File Ingestion**: Ingests uploaded workspace documents into a MongoDB vector store database.
 
 ---
@@ -47,6 +53,7 @@ graph TD
 - **Agent Orchestration**: [LangGraph](https://github.com/langchain-ai/langgraphjs) / [LangChain](https://js.langchain.com/)
 - **AI Models**: Google Generative AI (Gemini 2.5 Flash / Gemini 2.0 Flash fallback)
 - **Database & RAG**: [MongoDB](https://www.mongodb.com/) / [Mongoose](https://mongoosejs.com/)
+- **Rate Limiting & In-Memory Store**: [Upstash Redis](https://upstash.com/)
 - **Styling**: [Tailwind CSS](https://tailwindcss.com/)
 - **Mailer**: [Nodemailer](https://nodemailer.com/)
 
@@ -71,6 +78,10 @@ MONGODB_URI="mongodb+srv://<username>:<password>@<cluster>.mongodb.net/<dbname>"
 # Gemini API Credentials
 GEMINI_API_KEY="your-gemini-api-key"
 
+# Upstash Redis REST Credentials (for rate limiting)
+UPSTASH_REDIS_REST_URL="https://your-database-id.upstash.io"
+UPSTASH_REDIS_REST_TOKEN="your_rest_token"
+
 # Authentication Secrets
 AUTH_SECRET="your_nextauth_jwt_secret"
 
@@ -87,6 +98,9 @@ SMTP_PORT=587
 SMTP_USER="your-email@gmail.com"
 SMTP_PASS="your-app-password"
 SMTP_FROM='"AgentForge" <your-email@gmail.com>'
+
+# (Optional) E2B Cloud Sandbox API Key (Enables cloud microVM code execution)
+E2B_API_KEY="e2b_***"
 ```
 
 ### 📦 Installation

@@ -245,7 +245,7 @@ export default function CronDashboardClient({ workspaceId, initialJobs }: Client
             <Clock className="w-10 h-10 text-slate-700 animate-pulse" />
             <span className="font-semibold text-slate-400">No scheduled cron jobs found.</span>
             <p className="text-xs text-slate-500 max-w-xs">
-              Click the "Add Workflow" button above to schedule your first periodic agent audit.
+              Click the &quot;Add Workflow&quot; button above to schedule your first periodic agent audit.
             </p>
           </div>
         ) : (
@@ -273,7 +273,7 @@ export default function CronDashboardClient({ workspaceId, initialJobs }: Client
                   </div>
 
                   <p className="text-xs text-slate-400 leading-relaxed truncate">
-                    <strong className="text-slate-300">Prompt:</strong> "{job.prompt}"
+                    <strong className="text-slate-300">Prompt:</strong> &quot;{job.prompt}&quot;
                   </p>
 
                   {job.type === "github" && job.githubRepo && (

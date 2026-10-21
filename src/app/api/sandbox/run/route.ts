@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Parse request payload
-    const { code, language } = await req.json();
+    const { code, language, provider, timeoutMs } = await req.json();
 
     if (code === undefined || !language) {
       return NextResponse.json(
@@ -22,8 +22,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Execute the code block
-    const result = await executeBlock(code, language);
+    // 3. Execute the code block with requested or auto provider
+    const result = await executeBlock(code, language, {
+      provider: provider || "auto",
+      timeoutMs: typeof timeoutMs === "number" ? timeoutMs : undefined,
+    });
 
     // 4. Return execution details
     return NextResponse.json(result);

@@ -17,9 +17,16 @@ import {
   Terminal,
   X,
   Plus,
+  Eye,
+  Sparkles,
+  Cloud,
+  Laptop,
 } from "lucide-react";
 import { createChatSession, createChatThread } from "@/app/dashboard/actions";
 import { useRouter } from "next/navigation";
+import ArtifactCanvas, { ArtifactData, SandboxOutput } from "./ArtifactCanvas";
+import { isPreviewableLanguage, isExecutableLanguage } from "@/lib/sandbox/languages";
+import { buildPreviewHtml } from "@/lib/sandbox/previewHelper";
 
 interface StepItem {
   agentName: string;
@@ -62,13 +69,33 @@ export default function AgentConsole({
   const [currentSteps, setCurrentSteps] = useState<StepItem[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Sandbox states
+  // Sandbox & Artifact Canvas states
+  const [activeArtifact, setActiveArtifact] = useState<ArtifactData | null>(null);
+  const [inlinePreviewBlocks, setInlinePreviewBlocks] = useState<Record<string, boolean>>({});
+  const [cloudAvailable, setCloudAvailable] = useState(false);
+  const [sandboxProviderName, setSandboxProviderName] = useState("Local Sandbox");
   const [runningBlocks, setRunningBlocks] = useState<Record<string, boolean>>({});
-  const [blockOutputs, setBlockOutputs] = useState<Record<string, { stdout: string; stderr: string; exitCode: number; error?: string } | null>>({});
+  const [blockOutputs, setBlockOutputs] = useState<Record<string, SandboxOutput | null>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const handleRunCode = async (blockId: string, code: string, language: string) => {
+  // Check sandbox capability on mount
+  useEffect(() => {
+    fetch("/api/sandbox/status")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.cloudAvailable) setCloudAvailable(true);
+        if (data?.providerName) setSandboxProviderName(data.providerName);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleRunCode = async (
+    blockId: string,
+    code: string,
+    language: string,
+    provider?: "auto" | "e2b" | "local"
+  ) => {
     setRunningBlocks((prev) => ({ ...prev, [blockId]: true }));
     setBlockOutputs((prev) => ({ ...prev, [blockId]: null }));
 
@@ -76,7 +103,7 @@ export default function AgentConsole({
       const response = await fetch("/api/sandbox/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, language }),
+        body: JSON.stringify({ code, language, provider }),
       });
 
       if (!response.ok) {
@@ -93,6 +120,8 @@ export default function AgentConsole({
           stdout: "",
           stderr: err.message || "Failed to execute code in sandbox",
           exitCode: 1,
+          provider: "local-sandbox",
+          durationMs: 0,
         },
       }));
     } finally {
@@ -126,24 +155,87 @@ export default function AgentConsole({
         const code = lines.slice(1, -1).join("\n");
         const blockId = `${messageId}-${index}`;
         const normalizedLang = header.toLowerCase();
-        const isExecutable = ["javascript", "js", "typescript", "ts", "python", "py"].includes(normalizedLang);
+        const isExecutable = isExecutableLanguage(normalizedLang);
+        const isPreviewable = isPreviewableLanguage(normalizedLang);
         const isRunning = !!runningBlocks[blockId];
         const runOutput = blockOutputs[blockId];
+        const showInlinePreview = !!inlinePreviewBlocks[blockId];
+
+        const artifactTitle =
+          normalizedLang === "tsx" || normalizedLang === "jsx"
+            ? "React / TSX Component"
+            : normalizedLang === "html" || normalizedLang === "htm"
+            ? "Interactive Web App / Page"
+            : normalizedLang === "svg"
+            ? "SVG Vector Graphic"
+            : `${header || "Code"} Script`;
 
         return (
-          <div key={index} className="my-4 border border-slate-800 rounded-lg overflow-hidden bg-slate-950/80 shadow-md">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 bg-slate-900/40 text-xs font-mono text-slate-400">
-              <span className="flex items-center gap-1.5">
-                <FileCode className="w-3.5 h-3.5 text-purple-400" />
-                <span>{header || "code"}</span>
-              </span>
+          <div key={index} className="my-4 border border-slate-800 rounded-xl overflow-hidden bg-slate-950/90 shadow-xl">
+            {/* Code Block Header */}
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-slate-800 bg-slate-900/60 text-xs font-mono text-slate-400">
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1.5 text-slate-300 font-semibold">
+                  <FileCode className="w-4 h-4 text-purple-400" />
+                  <span>{header || "code"}</span>
+                </span>
+
+                {/* Inline Toggle: Code vs Live Preview */}
+                {isPreviewable && (
+                  <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5 ml-2 font-sans">
+                    <button
+                      onClick={() =>
+                        setInlinePreviewBlocks((prev) => ({ ...prev, [blockId]: false }))
+                      }
+                      className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+                        !showInlinePreview
+                          ? "bg-purple-600 text-white shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      Code
+                    </button>
+                    <button
+                      onClick={() =>
+                        setInlinePreviewBlocks((prev) => ({ ...prev, [blockId]: true }))
+                      }
+                      className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1 ${
+                        showInlinePreview
+                          ? "bg-purple-600 text-white shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      <Eye className="w-3 h-3" />
+                      <span>Preview</span>
+                    </button>
+                  </div>
+                )}
+              </div>
               
-              <div className="flex items-center">
+              <div className="flex items-center gap-2 font-sans">
+                {/* Open in full side-by-side Canvas */}
+                <button
+                  onClick={() =>
+                    setActiveArtifact({
+                      id: blockId,
+                      title: artifactTitle,
+                      code,
+                      language: header || "code",
+                    })
+                  }
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-950/70 hover:bg-purple-900/90 text-purple-300 border border-purple-800/60 text-xs font-medium transition-colors cursor-pointer shadow-sm"
+                  title="Open in Side-by-Side Canvas"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Open Canvas</span>
+                </button>
+
+                {/* Run in Sandbox */}
                 {isExecutable && (
                   <button
                     onClick={() => handleRunCode(blockId, code, normalizedLang)}
                     disabled={isRunning}
-                    className="flex items-center gap-1 hover:text-white text-indigo-400 disabled:opacity-50 transition-colors cursor-pointer mr-3"
+                    className="flex items-center gap-1 hover:text-white text-indigo-400 disabled:opacity-50 transition-colors cursor-pointer text-xs px-2 py-1 rounded hover:bg-indigo-950/40"
                   >
                     {isRunning ? (
                       <>
@@ -153,47 +245,68 @@ export default function AgentConsole({
                     ) : (
                       <>
                         <Play className="w-3 h-3 text-indigo-400" />
-                        <span>Run Code</span>
+                        <span>Run</span>
                       </>
                     )}
                   </button>
                 )}
 
+                {/* Copy button */}
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(code);
                     setCopiedId(blockId);
                     setTimeout(() => setCopiedId(null), 2000);
                   }}
-                  className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer"
+                  className="flex items-center gap-1 hover:text-white text-slate-400 hover:bg-slate-800 px-2 py-1 rounded transition-colors cursor-pointer"
+                  title="Copy code"
                 >
                   {copiedId === blockId ? (
                     <>
                       <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Copied</span>
+                      <span className="text-xs">Copied</span>
                     </>
                   ) : (
                     <>
                       <Copy className="w-3.5 h-3.5" />
-                      <span>Copy</span>
+                      <span className="text-xs">Copy</span>
                     </>
                   )}
                 </button>
               </div>
             </div>
             
-            <pre className="p-4 overflow-x-auto text-xs font-mono text-indigo-200 bg-slate-950/90 leading-relaxed">
-              <code>{code}</code>
-            </pre>
+            {/* Body: Either Inline Preview or Code */}
+            {isPreviewable && showInlinePreview ? (
+              <div className="h-80 w-full bg-[#0b0f19] border-t border-slate-900 overflow-hidden relative">
+                <iframe
+                  title={`Inline Preview ${blockId}`}
+                  srcDoc={buildPreviewHtml(code, normalizedLang)}
+                  sandbox="allow-scripts allow-modals allow-same-origin allow-forms"
+                  className="w-full h-full border-0"
+                />
+              </div>
+            ) : (
+              <pre className="p-4 overflow-x-auto text-xs font-mono text-indigo-200 bg-slate-950/90 leading-relaxed select-text">
+                <code>{code}</code>
+              </pre>
+            )}
 
             {/* Sandbox Console Output Container */}
             {(isRunning || runOutput) && (
               <div className="border-t border-slate-800 bg-slate-950 font-mono text-xs text-slate-300 p-4">
                 <div className="flex items-center justify-between border-b border-slate-900 pb-2 mb-2">
-                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 flex items-center gap-1.5">
-                    <Terminal className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Sandbox Console</span>
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 flex items-center gap-1.5">
+                      <Terminal className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Sandbox Console</span>
+                    </span>
+                    {runOutput && (
+                      <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-slate-900 border border-slate-800 text-slate-400">
+                        {runOutput.provider === "e2b-cloud" ? "E2B Cloud" : "Local Runner"}
+                      </span>
+                    )}
+                  </div>
                   {runOutput && (
                     <button
                       onClick={() => setBlockOutputs((prev) => ({ ...prev, [blockId]: null }))}
@@ -208,12 +321,12 @@ export default function AgentConsole({
                 {isRunning && (
                   <div className="flex items-center gap-2 text-indigo-400 animate-pulse py-1">
                     <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></span>
-                    <span>Spawning local environment and running script...</span>
+                    <span>Executing in isolated sandbox environment...</span>
                   </div>
                 )}
 
                 {runOutput && (
-                  <div className="space-y-2 max-h-60 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                  <div className="space-y-2 max-h-60 overflow-y-auto whitespace-pre-wrap leading-relaxed select-text">
                     {runOutput.stdout && (
                       <div className="text-emerald-400 font-mono">
                         {runOutput.stdout}
@@ -227,9 +340,14 @@ export default function AgentConsole({
                     {runOutput.exitCode !== undefined && (
                       <div className="text-slate-500 border-t border-slate-900/40 pt-1.5 text-[10px] flex justify-between">
                         <span>Exit code: {runOutput.exitCode}</span>
-                        <span className={runOutput.exitCode === 0 ? "text-emerald-500" : "text-rose-500 font-bold"}>
-                          {runOutput.exitCode === 0 ? "SUCCESS" : "FAILED"}
-                        </span>
+                        <div className="flex items-center gap-3">
+                          {runOutput.durationMs !== undefined && (
+                            <span className="font-mono text-slate-500">{runOutput.durationMs}ms</span>
+                          )}
+                          <span className={runOutput.exitCode === 0 ? "text-emerald-500 font-bold" : "text-rose-500 font-bold"}>
+                            {runOutput.exitCode === 0 ? "PASSED" : "FAILED"}
+                          </span>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -439,8 +557,11 @@ export default function AgentConsole({
   return (
     <div className="flex flex-1 overflow-hidden h-full">
       {/* Left Column (Chat Screen) */}
-      <div className="flex-1 flex flex-col h-full border-r border-slate-900">
-        
+      <div
+        className={`flex flex-col h-full border-r border-slate-900 transition-all duration-300 ${
+          activeArtifact ? "w-full lg:w-1/2" : "flex-1"
+        }`}
+      >
         {/* Active Visualizer Header */}
         <div className="px-6 py-3 border-b border-slate-800 bg-slate-950/60 flex items-center justify-between min-h-[57px]">
           <div className="flex items-center gap-3">
@@ -460,31 +581,48 @@ export default function AgentConsole({
             </button>
           </div>
 
-          {/* Glowing node status */}
-          {isGenerating && activeAgent && (
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-slate-400">{statusText}</span>
-              <div
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold ${
-                  getAgentTheme(activeAgent).color
-                }`}
-              >
-                <span className="relative flex h-2 w-2">
-                  <span
-                    className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                      getAgentTheme(activeAgent).pulse
-                    }`}
-                  ></span>
-                  <span
-                    className={`relative inline-flex rounded-full h-2 w-2 ${
-                      getAgentTheme(activeAgent).pulse
-                    }`}
-                  ></span>
-                </span>
-                <span>Active node: {activeAgent}</span>
-              </div>
+          <div className="flex items-center gap-3">
+            {/* Sandbox Status Badge */}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border bg-slate-900/80 border-slate-800/80">
+              {cloudAvailable ? (
+                <>
+                  <Cloud className="w-3 h-3 text-emerald-400" />
+                  <span className="text-emerald-300">Sandbox: E2B Cloud</span>
+                </>
+              ) : (
+                <>
+                  <Laptop className="w-3 h-3 text-indigo-400" />
+                  <span className="text-slate-300">Sandbox: Local</span>
+                </>
+              )}
             </div>
-          )}
+
+            {/* Glowing node status */}
+            {isGenerating && activeAgent && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400 hidden sm:inline">{statusText}</span>
+                <div
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold ${
+                    getAgentTheme(activeAgent).color
+                  }`}
+                >
+                  <span className="relative flex h-2 w-2">
+                    <span
+                      className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                        getAgentTheme(activeAgent).pulse
+                      }`}
+                    ></span>
+                    <span
+                      className={`relative inline-flex rounded-full h-2 w-2 ${
+                        getAgentTheme(activeAgent).pulse
+                      }`}
+                    ></span>
+                  </span>
+                  <span>Active: {activeAgent}</span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Messages Feed Area */}
@@ -646,55 +784,70 @@ export default function AgentConsole({
 
       </div>
 
-      {/* Right Column (Side Visualizer Panel) */}
-      <div className="w-80 bg-slate-900/60 overflow-y-auto hidden xl:flex flex-col p-6 space-y-6">
-        <div className="flex items-center gap-2 pb-4 border-b border-slate-800">
-          <Cpu className="w-5 h-5 text-indigo-400" />
-          <h3 className="text-sm font-bold text-white">Active Run Diagnostics</h3>
+      {/* Right Column: Either ArtifactCanvas (if active) or Diagnostics Panel */}
+      {activeArtifact ? (
+        <div className="w-full lg:w-1/2 bg-slate-950 flex flex-col h-full border-l border-slate-800 animate-in slide-in-from-right duration-300 z-20">
+          <ArtifactCanvas
+            artifact={activeArtifact}
+            onClose={() => setActiveArtifact(null)}
+            onRunCode={(code, lang, provider) =>
+              handleRunCode(activeArtifact.id, code, lang, provider)
+            }
+            runOutput={blockOutputs[activeArtifact.id]}
+            isRunning={runningBlocks[activeArtifact.id]}
+            cloudAvailable={cloudAvailable}
+          />
         </div>
+      ) : (
+        <div className="w-80 bg-slate-900/60 overflow-y-auto hidden xl:flex flex-col p-6 space-y-6">
+          <div className="flex items-center gap-2 pb-4 border-b border-slate-800">
+            <Cpu className="w-5 h-5 text-indigo-400" />
+            <h3 className="text-sm font-bold text-white">Active Run Diagnostics</h3>
+          </div>
 
-        {isGenerating ? (
-          <div className="space-y-5">
-            <div className="p-4 bg-slate-950 border border-slate-850 rounded-xl shadow-inner space-y-3">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Stream Execution Stats</h4>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Execution Phase:</span>
-                  <span className="text-purple-400 font-bold animate-pulse">{activeAgent}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Steps Compiled:</span>
-                  <span className="text-slate-300 font-semibold font-mono">{currentSteps.length}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider pl-1">Graph Routing Timeline</h4>
-              <div className="relative border-l border-slate-800 pl-4 ml-2 space-y-4">
-                {currentSteps.map((st, idx) => (
-                  <div key={idx} className="relative text-xs">
-                    <div className="absolute -left-[23px] top-0.5 p-0.5 bg-slate-900 border border-slate-800 rounded-full">
-                      {getAgentTheme(st.agentName).icon}
-                    </div>
-                    <div>
-                      <h5 className="font-bold text-slate-200">{st.agentName}</h5>
-                      <p className="text-slate-500 text-[10px] leading-relaxed mt-0.5">{st.action}</p>
-                    </div>
+          {isGenerating ? (
+            <div className="space-y-5">
+              <div className="p-4 bg-slate-950 border border-slate-850 rounded-xl shadow-inner space-y-3">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Stream Execution Stats</h4>
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Execution Phase:</span>
+                    <span className="text-purple-400 font-bold animate-pulse">{activeAgent}</span>
                   </div>
-                ))}
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Steps Compiled:</span>
+                    <span className="text-slate-300 font-semibold font-mono">{currentSteps.length}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider pl-1">Graph Routing Timeline</h4>
+                <div className="relative border-l border-slate-800 pl-4 ml-2 space-y-4">
+                  {currentSteps.map((st, idx) => (
+                    <div key={idx} className="relative text-xs">
+                      <div className="absolute -left-[23px] top-0.5 p-0.5 bg-slate-900 border border-slate-800 rounded-full">
+                        {getAgentTheme(st.agentName).icon}
+                      </div>
+                      <div>
+                        <h5 className="font-bold text-slate-200">{st.agentName}</h5>
+                        <p className="text-slate-500 text-[10px] leading-relaxed mt-0.5">{st.action}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="h-full flex flex-col items-center justify-center text-center py-20 text-slate-500 space-y-3">
-            <Play className="w-8 h-8 text-slate-700" />
-            <p className="text-xs max-w-[200px]">
-              No active agent runs. Trigger a request in the console to observe pipeline graphs.
-            </p>
-          </div>
-        )}
-      </div>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-center py-20 text-slate-500 space-y-3">
+              <Play className="w-8 h-8 text-slate-700" />
+              <p className="text-xs max-w-[200px]">
+                No active agent runs. Trigger a request in the console to observe pipeline graphs.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

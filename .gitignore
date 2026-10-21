@@ -45,3 +45,6 @@ imp.txt
 
 # local sandbox environments
 .sandbox/
+
+# eval run output (keep the folder)
+evals/results/*.json

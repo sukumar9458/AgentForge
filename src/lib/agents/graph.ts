@@ -267,7 +267,7 @@ Provide a concise summary of facts, specifications, or code instructions. Be bri
 }
 
 // Node: Coder Agent
-async function coderNode(state: typeof AgentState.State) {
+export async function coderNode(state: typeof AgentState.State) {
   const startTime = Date.now();
   const history = formatHistory(state.messages);
 
@@ -296,7 +296,7 @@ Return the completed code and instructions.`;
 }
 
 // Node: Critic Agent
-async function criticNode(state: typeof AgentState.State) {
+export async function criticNode(state: typeof AgentState.State) {
   const startTime = Date.now();
   const messagesCount = state.messages.length;
   // Get the last generated content (should be Coder's work)
@@ -314,7 +314,7 @@ async function criticNode(state: typeof AgentState.State) {
     if (runResults.length > 0) {
       executionReport = "\n\n### Actual Code Execution Sandbox Results:\n";
       runResults.forEach(({ block, result }, index) => {
-        executionReport += `\n**Block #${index + 1} (${block.language})**:\n`;
+        executionReport += `\n**Block #${index + 1} (${block.language})** [Environment: ${result.provider}, ${result.durationMs}ms]:\n`;
         if (result.stdout) {
           executionReport += `*Standard Output (stdout)*:\n\`\`\`\n${result.stdout}\n\`\`\`\n`;
         }
